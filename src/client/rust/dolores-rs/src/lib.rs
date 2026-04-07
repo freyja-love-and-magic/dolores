@@ -4,6 +4,9 @@ pub mod structs;
 mod tests;
 
 extern crate url;
+
+// Type alias for clearer API naming
+pub type DoloresClient = Dolores;
 use url::form_urlencoded;
 
 use reqwest::{Client, Response};
@@ -184,5 +187,23 @@ dbg!(format!("{}", url));
 dbg!(&feed);
 
         Ok(feed)
+    }
+
+    pub async fn put_post(&self, uuid: &str, post: serde_json::Value) -> Result<DoloresUser, Box<dyn std::error::Error>> {
+        let timestamp = Self::get_timestamp();
+        let message = format!("{}{}", timestamp, uuid);
+        let signature = self.sessionless.sign(&message).to_hex();
+
+        let payload = json!({
+            "timestamp": timestamp,
+            "post": post,
+            "signature": signature
+        }).as_object().unwrap().clone();
+
+        let url = format!("{}user/{}/post", self.base_url, uuid);
+        let res = self.put(&url, serde_json::Value::Object(payload)).await?;
+        let user: DoloresUser = res.json().await?;
+
+        Ok(user)
     }
 }

@@ -294,7 +294,11 @@ console.log('videos looks like', videos, {videos});
       instagram.refreshPosts();
     }*/
 
-    // Combine posts from all protocols
+    // Get local posts from db
+    const localPostsData = await db.getPosts();
+    const localPosts = localPostsData.posts || [];
+
+    // Combine posts from all protocols including local posts
     const combinedFeed = {
       ...bsky,
       /*instagram: {
@@ -304,10 +308,11 @@ console.log('videos looks like', videos, {videos});
         allPosts: instagram.getAllPosts(),
         stats: instagram.getStats()
       },*/
-      // Combined all posts from all protocols
+      // Combined all posts from all protocols including local posts
       allProtocolPosts: [
         ...bsky.allPosts,
-//        ...instagram.getAllPosts()
+//        ...instagram.getAllPosts(),
+        ...localPosts
       ].sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0)) // Sort by timestamp, newest first
     };
 
