@@ -173,34 +173,37 @@ console.warn(err);
   }
 });
 
-app.put('/admin/:uuid/feeds', async (req, res) => {
+const VALID_FEED_TYPES = ['canimus', 'canipub', 'caniblog', 'canicook'];
+
+// Register a feed URL for a given type. Any service with a Dolores user can register feeds.
+app.put('/user/:uuid/feeds', async (req, res) => {
   try {
     const uuid = req.params.uuid;
-    const timestamp = req.body.timestamp;
-    const protocol = req.body.protocol;
-    const feeds = req.body.feeds;
-    const signature = req.body.signatue;
+    const { timestamp, signature, feedType, url } = req.body;
+
+    if (!VALID_FEED_TYPES.includes(feedType)) {
+      res.status(400);
+      return res.send({ error: `invalid feedType — must be one of: ${VALID_FEED_TYPES.join(', ')}` });
+    }
+    if (!url) {
+      res.status(400);
+      return res.send({ error: 'url required' });
+    }
+
     const message = timestamp + uuid;
+    const foundUser = await db.getUserByUUID(uuid);
 
-    const foundUser = await db.getUserByUUID(req.params.uuid);
-
-    if(founderUser.pubKey !== process.env.ADMIN_PUB_KEY) {
+    if (!signature || !sessionless.verifySignature(signature, message, foundUser.pubKey)) {
       res.status(403);
-      return res.send({error: 'auth error'});
+      return res.send({ error: 'auth error' });
     }
 
-    if(!signature || !sessionless.verifySignature(signature, message, foundUser.pubKey)) {
-      res.status(403);
-      return res.send({error: 'auth error'});
-    }
-
-    await db.saveFeeds(protocol, feeds);
-
-    res.send({success: true});
+    await db.saveFeedUrl(feedType, url);
+    res.send({ success: true, feedType, url });
   } catch(err) {
-console.warn(err);
+    console.warn(err);
     res.status(404);
-    res.send({error: 'not found'});
+    res.send({ error: 'not found' });
   }
 });
 
@@ -575,13 +578,44 @@ app.post('/admin/:uuid/instagram/refresh', async (req, res) => {
   }
 });
 
-// Public canimus feeds endpoint (no auth required)
+// Public canimus feeds endpoint — merges hardcoded feeds with any registered via PUT /user/:uuid/feeds
 app.get('/canimus/feeds', async (req, res) => {
   try {
-    // Return all canimus feeds
-    res.send({ feeds: canimus.feeds });
+    const storedUrls = await db.getFeedUrls('canimus');
+    const storedFeeds = (await Promise.all(
+      storedUrls.map(url =>
+        fetch(url)
+          .then(r => r.ok ? r.json() : null)
+          .catch(() => null)
+      )
+    )).filter(Boolean);
+    res.send({ feeds: [...canimus.feeds, ...storedFeeds] });
   } catch (err) {
     console.error('Canimus feeds error:', err);
+    res.status(500);
+    res.send({ error: 'server error' });
+  }
+});
+
+// Generic feed endpoint for non-canimus types (canipub, caniblog, canicook)
+app.get('/feeds/:feedType', async (req, res) => {
+  try {
+    const { feedType } = req.params;
+    if (!VALID_FEED_TYPES.includes(feedType)) {
+      res.status(400);
+      return res.send({ error: `invalid feedType` });
+    }
+    const storedUrls = await db.getFeedUrls(feedType);
+    const feeds = (await Promise.all(
+      storedUrls.map(url =>
+        fetch(url)
+          .then(r => r.ok ? r.json() : null)
+          .catch(() => null)
+      )
+    )).filter(Boolean);
+    res.send({ feeds });
+  } catch (err) {
+    console.error('Feeds error:', err);
     res.status(500);
     res.send({ error: 'server error' });
   }

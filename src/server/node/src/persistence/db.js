@@ -116,6 +116,23 @@ console.log('throwing');
     return feeds;
   },
 
+  // Store a feed URL for a given feed type (canimus, canipub, caniblog, canicook).
+  // Deduplicates so the same URL is only stored once.
+  saveFeedUrl: async (feedType, url) => {
+    const key = `feedurls:${feedType}`;
+    const existing = JSON.parse(await client.get(key) || '[]');
+    if (!existing.includes(url)) {
+      existing.push(url);
+      await client.set(key, JSON.stringify(existing));
+    }
+    return true;
+  },
+
+  getFeedUrls: async (feedType) => {
+    const key = `feedurls:${feedType}`;
+    return JSON.parse(await client.get(key) || '[]');
+  },
+
   putVideo: async (user, video) => {
 console.log('putting video', video);
     const uuid = user.uuid;
